@@ -297,8 +297,8 @@ The octopus doesn't wait for its slowest arm. Neither should your GPU threads.
 
 *Thanks for reading. If you found this useful, consider sharing it.*
 
-*Code: [GitHub link]*
-*Contact: [your email/twitter]*
+*Code: [[GitHub link]](https://github.com/matthewlam721/octopus-parallel.git)*
+*Contact: matthewlam721@gmail.com*
 
 ---
 
