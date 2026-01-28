@@ -8,18 +8,12 @@
 
 I achieved **45.11x speedup** (97.8% time reduction) on GPU parallel processing by applying a simple insight from octopus neuroscience: instead of waiting for the slowest worker, pre-distribute work so everyone finishes together.
 
-**Results on real medical imaging data:**
+This is a **general-purpose algorithm** for any variable-sized parallel workload. We've validated it on:
 
-| Dataset | Speedup | p-value | Status |
-|---------|---------|---------|--------|
-| Chest CT - Full | 3.45x | 4.95e-81 | ✓ WIN |
-| Chest CT - Mixed | 42.46x | 2.20e-78 | ✓ WIN |
-| Brain MRI - Full | 8.08x | 2.98e-81 | ✓ WIN |
-| Brain MRI - Mixed | 35.67x | 3.58e-90 | ✓ WIN |
-| Combined CT+MRI | 9.20x | 7.02e-73 | ✓ WIN |
-| Combined - Mixed | **45.11x** | 1.60e-80 | ✓ WIN |
-
-**All results statistically significant (p < 0.001)**
+✅ **Medical Imaging** (CT, MRI) — up to 45.11x speedup, statistically validated  
+🔄 **Video Processing** — preliminary 14.84x speedup, further testing planned  
+🔄 **Satellite/GIS** — preliminary 8.15x speedup, further testing planned  
+🔄 **Web Images** — preliminary 3.41x speedup, further testing planned
 
 ---
 
@@ -130,20 +124,40 @@ That's it. No complex data structures. No runtime synchronization. Just pre-comp
 
 ## Benchmark Results
 
-Tested on **real medical imaging data** from public datasets (Kaggle Chest CT, Brain MRI).
+### Validated: Medical Imaging (Real Data)
 
-### Cross-Modality Validation
+Tested on **real medical imaging data** from public datasets (Kaggle Chest CT, Brain MRI) with full statistical rigor.
 
-| Dataset | Images | Imbalance | Speedup | p-value |
-|---------|--------|-----------|---------|---------|
-| Chest CT - Full | 1,000 | 6.82x | **3.45x** | 4.95e-81 |
-| Chest CT - Mixed | 1,001 | 98.51x | **42.46x** | 2.20e-78 |
-| Brain MRI - Full | 506 | 11.53x | **8.08x** | 2.98e-81 |
-| Brain MRI - Mixed | 507 | 78.90x | **35.67x** | 3.58e-90 |
-| Combined CT+MRI | 1,506 | 12.76x | **9.20x** | 7.02e-73 |
-| Combined - Mixed | 1,507 | 96.68x | **45.11x** | 1.60e-80 |
+| Dataset | Images | Imbalance | Speedup | p-value | Status |
+|---------|--------|-----------|---------|---------|--------|
+| Chest CT - Full | 1,000 | 6.82x | **3.45x** | 4.95e-81 | ✓ Validated |
+| Chest CT - Mixed | 1,001 | 98.51x | **42.46x** | 2.20e-78 | ✓ Validated |
+| Brain MRI - Full | 506 | 11.53x | **8.08x** | 2.98e-81 | ✓ Validated |
+| Brain MRI - Mixed | 507 | 78.90x | **35.67x** | 3.58e-90 | ✓ Validated |
+| Combined CT+MRI | 1,506 | 12.76x | **9.20x** | 7.02e-73 | ✓ Validated |
+| Combined - Mixed | 1,507 | 96.68x | **45.11x** | 1.60e-80 | ✓ Validated |
 
-### Key Result
+**All 6/6 tests statistically significant (p < 0.001)**
+
+### Preliminary: Other Domains (Synthetic Data)
+
+Initial testing on synthetic workloads representing various real-world scenarios. Full validation with real datasets planned.
+
+| Scenario | Imbalance | Speedup | Time Saved | Status |
+|----------|-----------|---------|------------|--------|
+| Web Images | 3.1x | **3.41x** | 70.7% | 🔄 Preliminary |
+| Thumbnails + 8K | 4.0x | **3.99x** | 74.9% | 🔄 Preliminary |
+| Satellite Imagery | 8.0x | **8.15x** | 87.7% | 🔄 Preliminary |
+| Video Frames | 16.6x | **14.84x** | 93.3% | 🔄 Preliminary |
+
+**Planned validation:**
+- [ ] Video processing with real video datasets
+- [ ] Satellite imagery with GIS datasets
+- [ ] Web image processing with production workloads
+
+---
+
+### Key Result: Medical Imaging
 
 ```
 Dataset: Combined CT + MRI + Large Synthetic Image
@@ -172,22 +186,6 @@ Results (n=30 runs):
 **Finding:** Algorithm performs consistently across different medical imaging modalities.
 
 ---
-
-## Synthetic Benchmark Results
-
-Prior to medical imaging validation, we tested on synthetic workloads representing various real-world scenarios:
-
-| Scenario | Imbalance | Speedup | Time Saved | Use Case |
-|----------|-----------|---------|------------|----------|
-| Web Images | 3.1x | **3.41x** | 70.7% | Mixed-size image processing |
-| Thumbnails + 8K | 4.0x | **3.99x** | 74.9% | Photo galleries, CDN |
-| Medical Imaging | 5.6x | **5.37x** | 81.4% | CT slice batches |
-| Satellite Imagery | 8.0x | **8.15x** | 87.7% | GIS, mapping |
-| Video Frames | 16.6x | **14.84x** | 93.3% | Video encoding, streaming |
-
-**Win rate: 5/5 tests (100%)**
-
-These scenarios demonstrate the algorithm's applicability beyond medical imaging.
 
 ---
 
@@ -331,9 +329,20 @@ Evolution solved this problem millions of years ago. I just translated it to CUD
 
 ## Future Work
 
+### Validation Roadmap
+- [ ] Video processing — real video datasets (YouTube-8M, Kinetics)
+- [ ] Satellite imagery — GIS datasets (Sentinel-2, Landsat)
+- [ ] Web images — production CDN workloads
+- [ ] Scientific computing — particle simulations, CFD
+
+### Technical Improvements
 - [ ] Edge deployment (NVIDIA Jetson)
-- [ ] Real algorithms (segmentation, detection)
+- [ ] Real image algorithms (segmentation, detection, filtering)
 - [ ] Comparison against CUDA dynamic parallelism
+- [ ] Framework integration (PyTorch, JAX)
+
+### Publication
+- [ ] Conference paper submission (targeting MICCAI, IEEE ICIP, or similar)
 
 ---
 
@@ -341,7 +350,9 @@ Evolution solved this problem millions of years ago. I just translated it to CUD
 
 Sometimes the best algorithms come from unexpected places.
 
-I started with a random thought about octopuses and ended up with a **45.11x speedup** on real medical imaging workloads, validated across multiple modalities with rigorous statistical analysis.
+I started with a random thought about octopuses and ended up with a **general-purpose GPU optimization** achieving **45.11x speedup** on validated medical imaging workloads, with promising preliminary results across video, satellite, and web image processing.
+
+The algorithm is simple, requires no runtime overhead, and works on any embarrassingly parallel workload with size variance.
 
 The octopus doesn't wait for its slowest arm. Neither should your GPU threads.
 
@@ -355,7 +366,7 @@ The octopus doesn't wait for its slowest arm. Neither should your GPU threads.
 
 ---
 
-### Appendix: Full Cross-Modality Results
+### Appendix A: Medical Imaging Results (Validated)
 
 ```
 ======================================================================
@@ -380,7 +391,7 @@ All results significant (p < 0.001): YES ✓
 🐙 Cross-modality validation complete!
 ```
 
-### Appendix: Synthetic Benchmark Results
+### Appendix B: Preliminary Results (Synthetic)
 
 ```
 ============================================================
