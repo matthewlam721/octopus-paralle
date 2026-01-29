@@ -1,146 +1,152 @@
 # 🐙 Octopus-Inspired GPU Load Balancing
 
-*Bio-inspired adaptive block assignment for image processing*
+**Bio-inspired adaptive block assignment for image processing**
 
 ---
 
 ## TL;DR
 
-I achieved **7-11x speedup over standard GPU practices** (grid-stride) on image-aware operations by applying insights from octopus neuroscience: adaptive pre-computed workload distribution.
+I achieved **12x total speedup** over fair GPU baselines by considering the **full cost**: setup time + memory + kernel execution.
 
-| Test | Grid-Stride | Hybrid (Ours) | Speedup |
-|------|-------------|---------------|---------|
-| Uniform images | 49.39 ms | **6.53 ms** | **7.6x** |
-| Mixed + 2K | 54.05 ms | **5.70 ms** | **9.5x** |
-| Mixed + 4K | 56.74 ms | **6.04 ms** | **9.4x** |
-| Mixed + 8K | 83.32 ms | **7.35 ms** | **11.3x** |
+| Metric | Grid-Stride (Fair) | Hybrid (Ours) | Improvement |
+|--------|-------------------|---------------|-------------|
+| Setup time | ~150ms | ~1ms | **148x faster** |
+| Memory | 341 MB | 0.03 MB | **11,698x less** |
+| Kernel time | ~6ms | ~6ms | ~same |
+| **TOTAL** | ~156ms | ~7ms | **12.45x faster** |
 
-**4/4 tests: Hybrid wins** ✅
+**Key insight:** When kernel performance is similar, **setup cost and memory usage determine the winner.**
 
 ---
 
-## The Journey: From 252x to Honest 11x
+## Contribution
+
+What makes this different from generic "segmented/irregular scheduling":
+
+| Aspect | This Work |
+|--------|-----------|
+| **Problem** | Ragged 2D stencil (blur) across variable-sized images — not scan/reduce |
+| **Cost Model** | **Total cost** = Setup (CPU) + Memory + Kernel — not just kernel throughput |
+| **Technique** | O(num_blocks) block metadata vs O(total_pixels) mapping table |
+| **Claim** | Kernel throughput is similar; **system-level costs determine the winner** |
+
+The key insight is that for image-aware operations, the "fair" baseline (Grid-Stride with O(1) lookup) requires expensive pre-computation that dominates total runtime.
+
+---
+
+## The Journey: From 252x to Honest 12x
 
 ### What I Originally Claimed
 > "252x speedup on GPU parallel processing!"
 
 ### What I Discovered
-That 252x was comparing against a **weak baseline** (1 thread per image). When I compared against **proper GPU practices** (grid-stride), I initially **lost by 2.5x**.
 
-### What I Built
-A **hybrid approach** that combines:
-- Block-per-image for small images (locality advantage)
-- Adaptive subdivision for large images (load balance)
+| Baseline | Speedup | Problem |
+|----------|---------|---------|
+| Naive (1 thread/image) | 252x | ❌ Strawman — nobody does this |
+| Grid-Stride (O(n) search) | 9-10x | ❌ Unfair — baseline has O(n) bug |
+| Grid-Stride (O(1) lookup) | 0.95x | 😬 Kernel-only comparison |
+| **Grid-Stride (O(1) + setup)** | **12x** | ✅ **Fair total cost comparison** |
 
-Result: **7-11x speedup over fair baseline** — an honest, reproducible improvement.
+### The Real Win
 
----
+Grid-Stride with O(1) lookup needs a **huge pre-computed lookup table**:
+- `pixel_to_image[total_pixels]` — one entry per pixel
+- 100M pixels = **400 MB** of memory
+- O(N) time to build
 
-## The Octopus Insight
-
-An octopus has ~500 million neurons distributed across 8 arms. Each arm operates semi-independently, yet they coordinate perfectly. When reaching for prey, all arms arrive simultaneously.
-
-**How?** The octopus pre-computes force distribution so no arm waits for another.
-
-**GPU translation:** Pre-compute work distribution so no thread waits.
-
----
-
-## The Problem: Load Imbalance
-
-Traditional approaches:
-
-**Naive (1 thread/image):**
-```
-Thread 0: ████████████████ (16M pixels) → slowest, everyone waits
-Thread 1: ████ (2M pixels)              → idle 87.5% of time
-```
-
-**Grid-Stride (standard GPU):**
-```
-Each thread processes interleaved pixels across ALL images
-✅ Good memory coalescing
-❌ Must search to find image boundaries (for image-aware ops)
-❌ No locality within images
-```
-
----
-
-## The Solution: Hybrid Adaptive Assignment
-
-```python
-# Adaptive block assignment
-threshold = 65536  # pixels per block
-
-for each image:
-    if image.size <= threshold:
-        assign 1 block (locality)
-    else:
-        assign ceil(size / threshold) blocks (load balance)
-```
-
-**Result:**
-- Small images: 1 block each → preserves locality
-- Large images: subdivided → balanced workload
-- All blocks: ~equal work → no waiting
+Hybrid only needs **tiny block arrays**:
+- `block_to_image[num_blocks]` — one entry per block
+- 500 images ≈ 500 blocks = **0.03 MB**
+- O(images) time to build
 
 ---
 
 ## Benchmark Results
 
-### Hybrid vs Fair Baseline (Grid-Stride)
+### Memory-Aware Benchmark (Main Result)
 
-Tested on **3x3 Gaussian blur** (image-aware operation requiring neighbor access):
+Comparing **total cost**: Setup + Memory + Kernel
 
-| Test | Imbalance | Grid-Stride | Block/Image | **Hybrid** | Winner |
-|------|-----------|-------------|-------------|------------|--------|
-| Flickr Pure | 1.4x | 49.39 ms | 6.95 ms | **6.53 ms** | ✅ Hybrid |
-| Flickr + 2K | 21.5x | 54.05 ms | 33.07 ms | **5.70 ms** | ✅ Hybrid |
-| Flickr + 4K | 42.5x | 56.74 ms | 61.38 ms | **6.04 ms** | ✅ Hybrid |
-| Flickr + 8K | 169x | 83.32 ms | 240.14 ms | **7.35 ms** | ✅ Hybrid |
+| Test | Pixels | Setup | Memory | Kernel | **TOTAL** |
+|------|--------|-------|--------|--------|-----------|
+| Flickr Pure | 89M | 210x | 11,545x | 1.00x | **16.68x** |
+| Flickr + 4K | 98M | 134x | 11,660x | 0.94x | **11.74x** |
+| Flickr + 8K | 123M | 79x | 11,925x | 0.95x | **5.91x** |
+| Flickr 1000 | 179M | 124x | 11,574x | 0.96x | **13.78x** |
+| Flickr 1000 + 8K | 213M | 193x | 11,787x | 1.00x | **14.13x** |
+| **AVERAGE** | — | **148x** | **11,698x** | 0.97x | **12.45x** |
 
-**Key insight:** 
-- Block-per-image wins on uniform workloads (7.6x)
-- Block-per-image **loses** on imbalanced workloads (0.35x)
-- Hybrid **wins all scenarios** (7-11x)
+*(Ratios = Grid-Fair / Hybrid, higher = Hybrid wins)*
+
+### Kernel-Only Benchmark
+
+When comparing **only kernel execution time** (ignoring setup):
+
+| Test | Grid-Stride | Hybrid | Ratio |
+|------|-------------|--------|-------|
+| Flickr Pure | 6.13ms | 6.46ms | 0.95x |
+| Flickr + 4K | 6.79ms | 6.84ms | 0.99x |
+| Flickr + 8K | 8.12ms | 8.55ms | 0.95x |
+
+**Conclusion:** Kernel performance is similar. The win comes from setup + memory.
 
 ---
 
-### Why Hybrid Wins
+## When Does Hybrid Win?
 
-| Aspect | Grid-Stride | Block-per-Image | Hybrid |
-|--------|-------------|-----------------|--------|
-| Load balance (uniform) | ✅ | ✅ | ✅ |
-| Load balance (imbalanced) | ✅ | ❌ | ✅ |
-| Memory locality | ❌ | ✅ | ✅ |
-| No search overhead | ❌ | ✅ | ✅ |
-| Image boundary awareness | ❌ | ✅ | ✅ |
+### ✅ Hybrid wins (use it):
+
+| Scenario | Why |
+|----------|-----|
+| **New batches each time** | Setup cost matters (12x faster) |
+| **Memory-constrained devices** | 11,000x less memory (Jetson, mobile) |
+| **Streaming/real-time** | Can't afford 150ms setup delay |
+| **Variable-size images** | Block-per-image fails on large images |
+
+### ⚠️ Similar performance:
+
+| Scenario | Why |
+|----------|-----|
+| **Same batch repeated 100+ times** | Setup cost amortized |
+| **Kernel-only comparison** | Both achieve similar throughput |
+
+### ❌ Don't use Hybrid:
+
+| Scenario | Why |
+|----------|-----|
+| **Per-pixel independent ops** | Grid-stride is simpler, equally fast |
+| **Already balanced workload** | No imbalance to solve |
 
 ---
 
-## When Does This Work?
+## The Octopus Insight
 
-### ✅ Good fit (use Hybrid):
-- **Image-aware operations** (blur, edge detection, convolution)
-- **Variable-size batches** (thumbnails + full-res)
-- **Operations needing image boundaries** (per-image statistics, segmentation)
+An octopus has ~500 million neurons distributed across 8 arms. Each arm operates semi-independently, yet they coordinate perfectly.
 
-### ⚠️ Use Grid-Stride instead:
-- **Per-pixel independent operations** (normalize, threshold, LUT)
-- **No image structure needed**
+**How?** The octopus pre-computes force distribution so no arm waits for another.
 
-### The Rule:
-> For **image-aware** operations with **size variance**, Hybrid beats Grid-Stride by **7-11x**.
+**GPU translation:** Pre-compute work distribution so no thread waits — but do it **efficiently**.
+
+```
+Grid-Stride-Fair: Pre-compute per-PIXEL  → O(N) setup, O(N) memory
+Hybrid:           Pre-compute per-BLOCK  → O(B) setup, O(B) memory
+                  where B << N
+```
 
 ---
 
 ## Implementation
 
-### Core Algorithm (~50 lines)
+### Core Algorithm (~30 lines)
 
 ```python
 def compute_hybrid_assignment(sizes, threshold=65536):
-    """Adaptive block assignment."""
+    """
+    Adaptive block assignment:
+    - Small images: 1 block (locality)
+    - Large images: subdivide (load balance)
+    """
     block_to_image = []
     block_start = []
     block_end = []
@@ -170,7 +176,7 @@ def hybrid_kernel(images_flat, offsets, widths, heights,
                   block_to_image, block_start, block_end, output):
     block_id = cuda.blockIdx.x
     
-    # O(1) lookup - no search!
+    # O(1) lookup — no search!
     img_id = block_to_image[block_id]
     local_start = block_start[block_id]
     local_end = block_end[block_id]
@@ -184,22 +190,11 @@ def hybrid_kernel(images_flat, offsets, widths, heights,
     stride = cuda.blockDim.x
     
     for local_idx in range(local_start + tid, local_end, stride):
-        # Process with full image context available
         y = local_idx // w
         x = local_idx % w
-        # ... blur/edge/convolution logic
+        global_idx = offset + local_idx
+        # ... process pixel with image context
 ```
-
----
-
-## Honest Comparison
-
-| Claim | Baseline | Speedup | Status |
-|-------|----------|---------|--------|
-| vs Naive (1 thread/image) | Weak | 201x | ⚠️ Misleading |
-| **vs Grid-Stride** | **Fair** | **7-11x** | ✅ **Honest** |
-
-The 201x number is technically correct but compares against a strawman. The **7-11x vs grid-stride** is the academically defensible claim.
 
 ---
 
@@ -207,11 +202,12 @@ The 201x number is technically correct but compares against a strawman. The **7-
 
 | File | Description |
 |------|-------------|
-| `hybrid_benchmark.py` | **Main benchmark** — Hybrid vs Grid-Stride vs Block-per-Image |
-| `locality_benchmark.py` | Image-aware operations (blur) comparison |
-| `fair_benchmark.py` | Per-pixel operations — shows where Grid-Stride wins |
-| `web_image_benchmark.py` | Legacy benchmark (vs weak baseline) |
+| `memory_benchmark.py` | **Main benchmark** — Total cost comparison |
+| `hybrid_benchmark.py` | Kernel comparison (Hybrid vs Grid-Stride-Search) |
+| `fair_hybrid_benchmark.py` | Kernel comparison (Hybrid vs Grid-Stride-Fair) |
 | `medical_benchmark.py` | Medical imaging tests |
+
+---
 
 ## Quick Start
 
@@ -225,112 +221,85 @@ pip install numba numpy scipy pillow
 # Place in ./Images/
 
 # Run main benchmark
-python hybrid_benchmark.py
+python memory_benchmark.py
 ```
-
----
-
-## Future Work
-
-### Optimizations Identified
-- [ ] **Cost-based threshold T** — Use estimated ops instead of pixels
-- [ ] **2D tiling** — Better for convolution with shared memory
-- [ ] **Tune T vs threads/block** — Optimize for occupancy
-- [ ] **Persistent kernels** — Reduce launch overhead
-
-### Validation Roadmap
-- [ ] Edge deployment (NVIDIA Jetson)
-- [ ] Real algorithms (U-Net, segmentation)
-- [ ] Video processing datasets
-- [ ] Framework integration (PyTorch, JAX)
-
-### Publication
-- [ ] Conference paper (targeting MLSys, IPDPS workshop, or similar)
 
 ---
 
 ## What I Learned
 
-1. **Honest benchmarks matter.** My initial 252x was vs weak baseline. Real contribution is 7-11x vs fair baseline.
+### 1. Fair baselines matter
+My initial 252x was against a strawman. Real contribution is 12x vs fair baseline.
 
-2. **Simple isn't always optimal.** Block-per-image is simple but fails on imbalanced workloads. Hybrid adds complexity but wins all scenarios.
+### 2. Total cost matters
+Kernel time alone is misleading. Setup + memory + kernel = true comparison.
 
-3. **Know when your approach wins.** Grid-stride beats us on per-pixel ops. We beat grid-stride on image-aware ops.
+### 3. Know when your approach wins
+- ✅ New batches, memory-constrained: Hybrid wins
+- ⚠️ Repeated batches, kernel-only: Similar performance
 
-4. **Bio-inspiration works.** The octopus insight led to a real solution, not just a cute analogy.
+### 4. Simple isn't always optimal
+Block-per-image is simple but fails on imbalanced workloads. Hybrid adds minimal complexity but handles all scenarios.
+
+---
+
+## Future Work
+
+- [ ] Edge deployment (NVIDIA Jetson) — where memory savings matter most
+- [ ] Real algorithms (U-Net, segmentation)
+- [ ] Video processing datasets
+- [ ] Framework integration (PyTorch, JAX)
 
 ---
 
 ## Conclusion
 
-The octopus doesn't wait for its slowest arm. Neither should your GPU blocks.
+**The octopus doesn't waste energy computing per-neuron lookup tables. Neither should your GPU.**
 
-For image-aware operations with variable-sized workloads, our hybrid adaptive assignment achieves **7-11x speedup** over standard grid-stride, with simple implementation and zero runtime overhead.
+For image-aware operations with variable-sized workloads:
+- **12x faster** total time
+- **11,000x less** memory
+- **Zero runtime overhead** after setup
+
+The key insight: **efficiency of the pre-computation matters as much as the kernel itself.**
 
 ---
 
-*Author: Matthew, UIUC MCS*  
-*Contact: matthewlam721@gmail.com*  
-*Repo: [github.com/matthewlam721/octopus-parallel](https://github.com/matthewlam721/octopus-parallel)*
+**Author:** Matthew, UIUC MCS  
+**Contact:** matthewlam721@gmail.com  
+**Repo:** [github.com/matthewlam721/octopus-parallel](https://github.com/matthewlam721/octopus-parallel)
 
 ---
 
-## Appendix: Benchmark Results
-
-### Hybrid Benchmark (Main Result)
+## Appendix: Full Benchmark Output
 
 ```
 ======================================================================
-HYBRID BENCHMARK SUMMARY
+MEMORY-AWARE BENCHMARK SUMMARY
 ======================================================================
 
-Test                  Grid-Stride  Block/Image       Hybrid          Winner
----------------------------------------------------------------------------
-Flickr Pure                 49.39         6.95         6.53          hybrid
-Flickr + 2K                 54.05        33.07         5.70          hybrid
-Flickr + 4K                 56.74        61.38         6.04          hybrid
-Flickr + 8K                 83.32       240.14         7.35          hybrid
+  Test                       Pixels      Setup     Memory     Kernel      TOTAL
+  ---------------------------------------------------------------------------
+  Flickr Pure           89,416,278       210x     11545x      1.00x     16.68x
+  Flickr + 4K           97,710,678       134x     11660x      0.94x     11.74x
+  Flickr + 8K          122,593,878        79x     11925x      0.95x      5.91x
+  Flickr 1000          179,455,121       124x     11574x      0.96x     13.78x
+  Flickr 1000 + 8K     212,632,721       193x     11787x      1.00x     14.13x
+
+  AVERAGE                         -       148x     11698x      0.97x     12.45x
 
 ======================================================================
-Win count:
-  Hybrid: 4/4
-  Block-per-Image: 0/4
-  Grid-Stride: 0/4
-
-🐙 HYBRID WINS ALL TESTS!
-```
-
-### Locality Benchmark (Block-per-Image Analysis)
-
-```
-======================================================================
-LOCALITY BENCHMARK SUMMARY
+KEY FINDINGS
 ======================================================================
 
-Test                      Naive  Grid-Stride  Block/Image       Winner
-----------------------------------------------------------------------
-Flickr Pure              466.95        51.33         6.43 block_per_image
-Flickr + 2K             3113.87        55.26        34.49 block_per_image
-Flickr + 4K             5909.22        58.77        63.18  grid_stride
+  1. SETUP TIME: Hybrid is 148x faster
+  2. MEMORY: Hybrid uses 11,698x less memory  
+  3. KERNEL: Similar performance
+  4. TOTAL: Hybrid is 12.45x faster overall
 
-~ Block-per-Image wins 2/3 tests
-  (Loses when imbalance is high → need Hybrid)
-```
+  🐙 HYBRID WINS when considering TOTAL cost!
 
-### Fair Benchmark (Per-Pixel Operations)
-
-```
 ======================================================================
-FAIR BENCHMARK SUMMARY
-======================================================================
-
-Test                       Imbalance     vs Naive      vs Grid      Status
----------------------------------------------------------------------------
-Flickr Pure (1000)             1.39x        8.80x        0.39x     ✗ LOSE
-Flickr + 4K                   44.22x      156.48x        0.40x     ✗ LOSE
-Flickr + 8K                  156.19x      438.98x        0.40x     ✗ LOSE
-
->>> For per-pixel ops, Grid-Stride wins. Use Hybrid for image-aware ops. <<<
 ```
 
 *Tested on NVIDIA RTX 4090, January 2026*
