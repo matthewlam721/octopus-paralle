@@ -15,6 +15,23 @@ I tested three solutions to #2.
 
 ## Three Approaches
 
+```
+Flattened pixels:  [████ img0 ████|██ img1 ██|██████ img2 ██████|...]
+                    ↑ pixel 12345 belongs to which image?
+
+A (Table):    pixel_to_image = [0,0,0,0,0, 1,1,1, 2,2,2,2,2,2...]
+              └─ 500M entries = 2GB memory ❌
+
+B (Search):   offsets = [0, 50000, 80000, 140000...]
+              └─ Binary search per pixel, O(log M) ⚠️
+              └─ 0.08 MB, but cache-dependent
+
+C (Block):    block_to_image = [0, 0, 1, 2, 2, 2...]
+              block_range    = [(0,32K), (32K,50K), (0,30K), ...]
+              └─ O(1) lookup per block ✅
+              └─ 0.27 MB, deterministic
+```
+
 ### A: Lookup Table
 ```python
 # Build a mapping for every pixel
