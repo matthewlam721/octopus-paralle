@@ -198,6 +198,52 @@ Hybrid's benefit is proportional to:
 
 ---
 
+## Real-World Implications
+
+Based on our benchmarks (Setup: 148x faster, H2D: 150x faster, Memory: 11,000x less):
+
+### 1. Low-Latency / Online Services
+**Problem:** Each request is a new batch — setup cost cannot be amortized.
+
+| Approach | Setup Time | Impact |
+|----------|------------|--------|
+| Grid-Stride | ~150ms | ❌ Unacceptable for real-time |
+| Hybrid | ~1ms | ✅ Real-time ready |
+
+*Validated: 148x faster setup enables sub-10ms preprocessing*
+
+### 2. Streaming / Augmentation Pipelines
+**Problem:** Data changes every batch (real-time frames, augmentation reshapes).
+
+| Approach | Per-Batch Cost | 1000 Batches |
+|----------|----------------|--------------|
+| Grid-Stride | ~210ms | 210 seconds |
+| Hybrid | ~80ms | 80 seconds |
+
+*Validated: 2.6x faster when mapping cannot be reused*
+
+### 3. Multi-Tenant / MIG Environments
+**Problem:** Multiple services share GPU — memory budget is tight.
+
+| Approach | Memory per Stream | 8 Concurrent Streams |
+|----------|-------------------|----------------------|
+| Grid-Stride | 341 MB | **2.7 GB** (just mappings!) |
+| Hybrid | 0.03 MB | **0.24 MB** |
+
+*Projected: On MIG instance with 5-10GB, Grid-Stride mapping alone consumes 5-7% of memory. Hybrid is negligible.*
+
+### 4. PCIe Bandwidth Constrained
+**Problem:** Large mapping table is an H2D transfer bottleneck.
+
+| Approach | H2D Transfer | Bandwidth Impact |
+|----------|--------------|------------------|
+| Grid-Stride | 341 MB @ ~25ms | ❌ PCIe saturated |
+| Hybrid | 0.03 MB @ ~0.2ms | ✅ Negligible |
+
+*Validated: 150x less data transfer — matters even on desktop RTX 4090*
+
+---
+
 ## The Octopus Insight
 
 An octopus has ~500 million neurons distributed across 8 arms. But the brain doesn't micromanage every neuron — it coordinates at the **arm level**. Each arm has local autonomy to handle its own movements.
