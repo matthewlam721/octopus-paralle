@@ -1,6 +1,8 @@
-# GPU Variable-Length Batch Processing: A Benchmark Study
+# 🐙 Octopus: Block-Level GPU Scheduling for Variable-Length Batches
 
 I needed to process batches of variable-sized images on GPU without padding. Tried three approaches, benchmarked them properly, and found some surprising results.
+
+Why "Octopus"? Each CUDA block independently knows its task via O(1) lookup, like how octopus arms process locally without waiting for the brain. That's the extent of the analogy—the rest is just benchmarks.
 
 ## The Problem
 
@@ -47,7 +49,8 @@ block_to_image[block_id] → image_id
 
 - A is useless. Setup (619ms) + H2D transfer (210ms) kills it.
 - B and C are close. C wins by 4ms (1.4%).
-- C kernel matches A's speed while using 9000x less memory than A.
+- C kernel matches A's speed while using **9000x less memory** than A.
+- C uses only **0.27 MB** vs A's 2475 MB—this is the main win.
 
 ## The Surprising Part
 
@@ -136,6 +139,16 @@ def kernel_c(images, offsets, widths, heights,
 3. Block-level metadata gives you similar performance with more flexibility.
 
 4. The "best" approach depends on your workload. I've provided the numbers; pick what fits.
+
+## Where This Actually Matters
+
+On RTX 4090, B ≈ C. But the gap widens on:
+
+- **Edge devices (Jetson)**: 2MB L2 cache means binary search will miss. Block metadata stays O(1).
+- **Multi-tenant GPUs (MIG)**: Shared cache = contention. Deterministic O(1) beats variable binary search.
+- **Gigapixel images (medical/satellite)**: 100K×100K image = 40GB lookup table. Block metadata = only option.
+
+I only have a 4090 to test on. If someone has Jetson results, I'd love to see them.
 
 ---
 
