@@ -235,7 +235,7 @@ def kernel_c(images, offsets, widths, heights,
 |-----|----------|-----------|--------------|
 | RTX 4090 | 72 MB | 1 TB/s | B ≈ C. Everything fits in cache. |
 | T4 | 4 MB | 320 GB/s | C wins by 22-28%. Cache pressure is real. |
-| Jetson Orin Nano | 4 MB | 102 GB/s | Arriving Monday. Expecting bigger gap. |
+| Jetson Orin Nano | 4 MB | 102 GB/s | Arriving Expecting bigger gap. |
 
 The T4 results were the surprise. I expected some improvement on smaller cache, but 28% on synthetic and 22% on real video data is more than I thought I'd see.
 
